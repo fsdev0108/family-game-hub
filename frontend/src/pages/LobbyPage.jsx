@@ -26,7 +26,6 @@ export default function LobbyPage() {
   const [config, setConfig] = useState({});
   const [starting, setStarting] = useState(false);
   const [leaving, setLeaving] = useState(false);
-  const [configSaving, setConfigSaving] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const roomCode = session?.roomCode;
@@ -103,16 +102,9 @@ export default function LobbyPage() {
     };
   }, [roomCode]);
 
-  async function handleUpdateConfig(newConfig) {
+  function handleUpdateConfig(newConfig) {
     setConfig(newConfig);
-    setConfigSaving(true);
-    try {
-      await api.updateConfig(roomCode, newConfig);
-    } catch (err) {
-      toastError(err.message || 'Failed to update config');
-    } finally {
-      setConfigSaving(false);
-    }
+    socketRef.current?.emit('lobby:update_config', newConfig);
   }
 
   function handleStartGame() {
@@ -227,11 +219,6 @@ export default function LobbyPage() {
                   onChange={handleUpdateConfig}
                   isHost={isHost}
                 />
-              )}
-              {configSaving && (
-                <p className="text-xs text-violet-400 mt-3 flex items-center gap-1">
-                  <Spinner size="sm" /> Saving...
-                </p>
               )}
             </div>
 
