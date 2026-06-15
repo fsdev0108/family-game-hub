@@ -15,7 +15,7 @@ function lobbySocket(socket, ns) {
   socket.join(roomCode);
 
   ns.to(roomCode).emit('lobby:player_joined', {
-    player: { name: playerName, isHost },
+    player: { id: playerId, name: playerName, isHost },
   });
 
   socket.on('lobby:rename', ({ newName }) => {
@@ -90,15 +90,19 @@ function lobbySocket(socket, ns) {
 
   socket.on('disconnect', () => {
     const room = getRoom(roomCode);
-    const wasHost = isHost;
+
+    // If the game has already started, the player is just navigating to the game page.
+    // Do NOT remove them from the room — the game socket still needs to find them.
+    if (!room || room.phase !== 'lobby') return;
 
     removePlayer(roomCode, playerId);
 
+    // Room was deleted (last player left)
     if (!getRoom(roomCode)) return;
 
     ns.to(roomCode).emit('lobby:player_left', { playerName });
 
-    if (wasHost && room && room.phase === 'lobby') {
+    if (isHost) {
       ns.to(roomCode).emit('lobby:error', {
         code: 'HOST_LEFT',
         message: 'The host has left. The room has been closed.',

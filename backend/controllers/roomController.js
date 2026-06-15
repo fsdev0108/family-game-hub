@@ -9,6 +9,7 @@ const {
   getRoomCodes,
   addPlayer,
   getPlayersArray,
+  updateRoomConfig,
 } = require('../utils/roomManager');
 const {
   validateGameType,
@@ -34,6 +35,11 @@ async function createRoomHandler(req, res, next) {
     const playerId = uuidv4();
 
     const room = createRoom({ code, passwordHash, hostId: playerId, gameType });
+
+    // Seed default config so room.config is never empty when the game starts
+    if (gameType === 'wink-murder') {
+      updateRoomConfig(code, { killerCount: 1, detectiveCount: 0 });
+    }
 
     const host = {
       id: playerId,
@@ -116,8 +122,10 @@ function getRoomHandler(req, res, next) {
       code: room.code,
       gameType: room.gameType,
       phase: room.phase,
+      config: room.config,
       playerCount: room.players.size,
       players: getPlayersArray(room.code).map(p => ({
+        id: p.id,
         name: p.name,
         isHost: p.isHost,
       })),

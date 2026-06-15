@@ -2,14 +2,21 @@ const { getRoom, getPlayer, getPlayersArray, setRoomPhase, deleteRoom } = requir
 const { assignImposterRoles } = require('../utils/roleAssigner');
 
 const gameStates = new Map();
+const hostTimers = new Map();
 
 function imposterSocket(socket, ns) {
   const { playerId, roomCode, isHost } = socket;
 
-  socket.join(roomCode);
-
   const room = getRoom(roomCode);
   if (!room) return socket.disconnect(true);
+
+  // Cancel pending host-disconnect timer if host reconnects
+  if (isHost && hostTimers.has(roomCode)) {
+    clearTimeout(hostTimers.get(roomCode));
+    hostTimers.delete(roomCode);
+  }
+
+  socket.join(roomCode);
 
   if (!gameStates.has(roomCode)) {
     const players = getPlayersArray(roomCode);
@@ -23,7 +30,6 @@ function imposterSocket(socket, ns) {
       imposterWord: null,
       votes: new Map(),
       votedNames: [],
-      readyPlayers: new Set(),
       playerCount: players.length,
       phase: 'waiting-words',
       votingTimer: null,
@@ -31,7 +37,6 @@ function imposterSocket(socket, ns) {
   }
 
   const state = gameStates.get(roomCode);
-
   socket.emit('imp:roles_dealt', { role: state.roles[playerId] });
 
   socket.on('imp:submit_words', ({ normalWord, imposterWord }) => {
@@ -44,7 +49,7 @@ function imposterSocket(socket, ns) {
       return socket.emit('error', { code: 'INVALID_WORDS', message: 'Both words are required' });
     }
     if (normalWord.trim().toLowerCase() === imposterWord.trim().toLowerCase()) {
-      return socket.emit('error', { code: 'SAME_WORDS', message: 'Normal and imposter words must be different' });
+      return socket.emit('error', { code: 'SAME_WORDS', message: 'Words must be different' });
     }
 
     state.normalWord = normalWord.trim();
@@ -55,9 +60,7 @@ function imposterSocket(socket, ns) {
     players.forEach(player => {
       const word = state.roles[player.id] === 'imposter' ? state.imposterWord : state.normalWord;
       const playerSocket = findSocketByPlayerId(ns, player.id);
-      if (playerSocket) {
-        playerSocket.emit('imp:words_set', { word });
-      }
+      if (playerSocket) playerSocket.emit('imp:words_set', { word });
     });
 
     ns.to(roomCode).emit('imp:words_distributed');
@@ -77,9 +80,7 @@ function imposterSocket(socket, ns) {
       durationSeconds: 60,
     });
 
-    state.votingTimer = setTimeout(() => {
-      resolveVoting(roomCode, ns, state);
-    }, 60000);
+    state.votingTimer = setTimeout(() => resolveVoting(roomCode, ns, state), 60000);
   });
 
   socket.on('imp:vote', ({ votedFor }) => {
@@ -94,9 +95,7 @@ function imposterSocket(socket, ns) {
     if (!voter) return;
 
     state.votes.set(playerId, target.id);
-    if (!state.votedNames.includes(voter.name)) {
-      state.votedNames.push(voter.name);
-    }
+    if (!state.votedNames.includes(voter.name)) state.votedNames.push(voter.name);
 
     ns.to(roomCode).emit('imp:vote_update', { votedNames: state.votedNames });
 
@@ -106,15 +105,45 @@ function imposterSocket(socket, ns) {
     }
   });
 
+  // Host can end the game early
+  socket.on('imp:end_game', () => {
+    if (!isHost) return;
+    if (state.votingTimer) clearTimeout(state.votingTimer);
+
+    const players = getPlayersArray(roomCode);
+    const imposter = players.find(p => p.id === state.imposterId);
+
+    ns.to(roomCode).emit('imp:game_over', {
+      winner: 'none',
+      imposterName: imposter?.name,
+      eliminatedName: null,
+      normalWord: state.normalWord,
+      imposterWord: state.imposterWord,
+      voteTally: {},
+    });
+
+    setRoomPhase(roomCode, 'ended');
+    gameStates.delete(roomCode);
+  });
+
   socket.on('disconnect', () => {
     const room = getRoom(roomCode);
     if (!room) return;
 
     if (isHost) {
-      if (state.votingTimer) clearTimeout(state.votingTimer);
-      ns.to(roomCode).emit('error', { code: 'HOST_DISCONNECTED', message: 'Host disconnected. Game over.' });
-      gameStates.delete(roomCode);
-      deleteRoom(roomCode);
+      const timer = setTimeout(() => {
+        hostTimers.delete(roomCode);
+        if (getRoom(roomCode)) {
+          if (state.votingTimer) clearTimeout(state.votingTimer);
+          ns.to(roomCode).emit('error', {
+            code: 'HOST_DISCONNECTED',
+            message: 'Host disconnected. Game over.',
+          });
+          gameStates.delete(roomCode);
+          deleteRoom(roomCode);
+        }
+      }, 10000);
+      hostTimers.set(roomCode, timer);
     }
   });
 }
@@ -133,10 +162,7 @@ function resolveVoting(roomCode, ns, state) {
   let maxVotes = 0;
   let eliminatedId = null;
   for (const [id, count] of Object.entries(tally)) {
-    if (count > maxVotes) {
-      maxVotes = count;
-      eliminatedId = id;
-    }
+    if (count > maxVotes) { maxVotes = count; eliminatedId = id; }
   }
 
   const voteTallyByName = {};

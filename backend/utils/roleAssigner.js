@@ -8,7 +8,9 @@ function shuffle(array) {
 }
 
 function assignWinkMurderRoles(players, config) {
-  const { killerCount, detectiveCount } = config;
+  // Fall back to sensible defaults if config was never explicitly saved
+  const killerCount = Number.isInteger(config?.killerCount) ? config.killerCount : 1;
+  const detectiveCount = Number.isInteger(config?.detectiveCount) ? config.detectiveCount : 0;
   const playerIds = shuffle(players.map(p => p.id));
 
   const roles = {};

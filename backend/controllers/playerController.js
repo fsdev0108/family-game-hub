@@ -50,6 +50,7 @@ function getPlayersHandler(req, res, next) {
     if (!room) return next(createError(404, 'ROOM_NOT_FOUND', 'Room not found'));
 
     const players = getPlayersArray(code).map(p => ({
+      id: p.id,
       name: p.name,
       isHost: p.isHost,
     }));

@@ -2,18 +2,22 @@ const { getRoom, getPlayer, setRoomPhase, getPlayersArray, deleteRoom } = requir
 const { assignWinkMurderRoles } = require('../utils/roleAssigner');
 
 const gameStates = new Map();
-
-function getGameState(roomCode) {
-  return gameStates.get(roomCode) || null;
-}
+// Grace period timers: if host disconnects, wait before destroying room
+const hostTimers = new Map();
 
 function winkMurderSocket(socket, ns) {
   const { playerId, roomCode, isHost } = socket;
 
-  socket.join(roomCode);
-
   const room = getRoom(roomCode);
   if (!room) return socket.disconnect(true);
+
+  // If host is reconnecting within the grace period, cancel the destruction timer
+  if (isHost && hostTimers.has(roomCode)) {
+    clearTimeout(hostTimers.get(roomCode));
+    hostTimers.delete(roomCode);
+  }
+
+  socket.join(roomCode);
 
   if (!gameStates.has(roomCode)) {
     const players = getPlayersArray(roomCode);
@@ -29,14 +33,11 @@ function winkMurderSocket(socket, ns) {
     });
   }
 
-  const state = getGameState(roomCode);
-  const myRole = state.roles[playerId];
-
-  socket.emit('wm:roles_dealt', { role: myRole });
+  const state = gameStates.get(roomCode);
+  socket.emit('wm:roles_dealt', { role: state.roles[playerId] });
 
   socket.on('wm:ready', () => {
     state.readyPlayers.add(playerId);
-
     if (state.readyPlayers.size === state.playerCount) {
       state.phase = 'playing';
       ns.to(roomCode).emit('wm:all_ready');
@@ -57,7 +58,6 @@ function winkMurderSocket(socket, ns) {
 
     state.eliminated.add(target.id);
     ns.to(roomCode).emit('wm:player_winked', { targetName });
-
     checkWinkMurderEnd(roomCode, ns, state);
   });
 
@@ -94,16 +94,51 @@ function winkMurderSocket(socket, ns) {
     checkWinkMurderEnd(roomCode, ns, state);
   });
 
+  // Host can end the game at any time
+  socket.on('wm:end_game', () => {
+    if (!isHost) return;
+    endGame(roomCode, ns, state, 'host_ended');
+  });
+
   socket.on('disconnect', () => {
     const room = getRoom(roomCode);
     if (!room) return;
 
     if (isHost) {
-      ns.to(roomCode).emit('error', { code: 'HOST_DISCONNECTED', message: 'Host disconnected. Game over.' });
-      gameStates.delete(roomCode);
-      deleteRoom(roomCode);
+      // Give the host 10 seconds to reconnect (handles accidental refresh)
+      const timer = setTimeout(() => {
+        hostTimers.delete(roomCode);
+        if (getRoom(roomCode)) {
+          ns.to(roomCode).emit('error', {
+            code: 'HOST_DISCONNECTED',
+            message: 'Host disconnected. Game over.',
+          });
+          gameStates.delete(roomCode);
+          deleteRoom(roomCode);
+        }
+      }, 10000);
+      hostTimers.set(roomCode, timer);
     }
   });
+}
+
+function endGame(roomCode, ns, state, reason) {
+  if (!state || state.phase === 'ended') return;
+  state.phase = 'ended';
+
+  const players = getPlayersArray(roomCode);
+  const rolesReveal = {};
+  players.forEach(p => { rolesReveal[p.name] = state.roles[p.id]; });
+
+  if (reason === 'host_ended') {
+    ns.to(roomCode).emit('wm:game_over', {
+      winner: 'none',
+      roles: rolesReveal,
+    });
+  }
+
+  setRoomPhase(roomCode, 'ended');
+  gameStates.delete(roomCode);
 }
 
 function checkWinkMurderEnd(roomCode, ns, state) {
@@ -116,7 +151,6 @@ function checkWinkMurderEnd(roomCode, ns, state) {
 
   const killersWin = activeKillers.length > 0 &&
     activeKillers.length >= activePlayers.filter(p => state.roles[p.id] !== 'killer').length;
-
   const civilianWin = activeKillers.length === 0;
 
   if (killersWin || civilianWin) {

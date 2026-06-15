@@ -21,9 +21,14 @@ const initSockets = require('./sockets/index');
 const app = express();
 const httpServer = http.createServer(app);
 
+// In development allow any origin (local network play). In production restrict to CORS_ORIGIN.
+const corsOrigin = process.env.NODE_ENV === 'production'
+  ? process.env.CORS_ORIGIN
+  : true;
+
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CORS_ORIGIN,
+    origin: corsOrigin,
     credentials: true,
   },
   pingTimeout: 20000,
@@ -46,7 +51,7 @@ const sessionMiddleware = session({
 
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN,
+  origin: corsOrigin,
   credentials: true,
 }));
 app.use(express.json());
