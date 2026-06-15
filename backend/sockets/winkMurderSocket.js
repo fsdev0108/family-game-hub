@@ -1,7 +1,6 @@
 const { getRoom, getPlayer, setRoomPhase, getPlayersArray, deleteRoom } = require('../utils/roomManager');
-const { assignWinkMurderRoles } = require('../utils/roleAssigner');
+const { wmGameStates: gameStates } = require('../utils/gameStateStore');
 
-const gameStates = new Map();
 // Grace period timers: if host disconnects, wait before destroying room
 const hostTimers = new Map();
 
@@ -19,22 +18,12 @@ function winkMurderSocket(socket, ns) {
 
   socket.join(roomCode);
 
-  if (!gameStates.has(roomCode)) {
-    const players = getPlayersArray(roomCode);
-    const roles = assignWinkMurderRoles(players, room.config);
-
-    gameStates.set(roomCode, {
-      roles,
-      eliminated: new Set(),
-      readyPlayers: new Set(),
-      playerCount: players.length,
-      phase: 'role-reveal',
-      accusationsUsed: new Set(),
-    });
-  }
-
   const state = gameStates.get(roomCode);
-  socket.emit('wm:roles_dealt', { role: state.roles[playerId] });
+  if (!state) return socket.disconnect(true);
+
+  const role = state.roles[playerId];
+  console.log(`[${roomCode}] wm socket: player="${socket.playerName}" playerId="${playerId}" role="${role}" rolesKeys=${JSON.stringify(Object.keys(state.roles))}`);
+  socket.emit('wm:roles_dealt', { role });
 
   socket.on('wm:ready', () => {
     state.readyPlayers.add(playerId);

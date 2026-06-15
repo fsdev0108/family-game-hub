@@ -53,6 +53,7 @@ export default function LobbyPage() {
     const socket = io(`${SOCKET_URL}/lobby`, {
       withCredentials: true,
       transports: ['websocket'],
+      auth: { playerId: session?.player?.id, roomCode },
     });
     socketRef.current = socket;
 
@@ -103,7 +104,6 @@ export default function LobbyPage() {
   }, [roomCode]);
 
   function handleUpdateConfig(newConfig) {
-    setConfig(newConfig);
     socketRef.current?.emit('lobby:update_config', newConfig);
   }
 

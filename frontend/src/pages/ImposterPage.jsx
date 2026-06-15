@@ -52,6 +52,7 @@ export default function ImposterPage() {
     const socket = io(`${SOCKET_URL}/imposter`, {
       withCredentials: true,
       transports: ['websocket'],
+      auth: { playerId: session?.player?.id, roomCode },
     });
     socketRef.current = socket;
 

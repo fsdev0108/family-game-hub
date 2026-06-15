@@ -41,6 +41,7 @@ export default function WinkMurderPage() {
     const socket = io(`${SOCKET_URL}/wink-murder`, {
       withCredentials: true,
       transports: ['websocket'],
+      auth: { playerId: session?.player?.id, roomCode },
     });
     socketRef.current = socket;
 

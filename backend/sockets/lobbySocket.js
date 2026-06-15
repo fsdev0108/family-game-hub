@@ -8,6 +8,8 @@ const {
   setRoomPhase,
 } = require('../utils/roomManager');
 const { validatePlayerName, validateWinkMurderConfig, validateImposterConfig } = require('../utils/gameValidators');
+const { assignWinkMurderRoles, assignImposterRoles } = require('../utils/roleAssigner');
+const { wmGameStates, impGameStates } = require('../utils/gameStateStore');
 
 function lobbySocket(socket, ns) {
   const { playerId, roomCode, playerName, isHost } = socket;
@@ -17,6 +19,14 @@ function lobbySocket(socket, ns) {
   ns.to(roomCode).emit('lobby:player_joined', {
     player: { id: playerId, name: playerName, isHost },
   });
+
+  // Send the current confirmed config to this player immediately.
+  // This ensures they see the host's latest saved config without waiting
+  // for the next change event.
+  const currentRoom = getRoom(roomCode);
+  if (currentRoom?.config) {
+    socket.emit('lobby:config_updated', { config: currentRoom.config });
+  }
 
   socket.on('lobby:rename', ({ newName }) => {
     const nameError = validatePlayerName(newName);
@@ -66,7 +76,10 @@ function lobbySocket(socket, ns) {
     }
 
     updateRoomConfig(roomCode, config);
-    ns.to(roomCode).emit('lobby:config_updated', { config });
+    // Broadcast the merged server config (not the raw client value) so all
+    // clients are always in sync with what the server actually stored.
+    const updatedRoom = getRoom(roomCode);
+    ns.to(roomCode).emit('lobby:config_updated', { config: updatedRoom.config });
   });
 
   socket.on('lobby:start_game', () => {
@@ -85,6 +98,39 @@ function lobbySocket(socket, ns) {
     }
 
     setRoomPhase(roomCode, 'starting');
+
+    // Assign roles now, while all players are still in the lobby.
+    // Game sockets will read from this pre-initialized state instead of
+    // racing to assign roles when the first player connects.
+    const players = getPlayersArray(roomCode);
+    console.log(`[${roomCode}] Starting game. Players: ${players.map(p => p.name).join(', ')} | Config:`, room.config);
+    if (room.gameType === 'wink-murder') {
+      const roles = assignWinkMurderRoles(players, room.config);
+      console.log(`[${roomCode}] Wink Murder roles:`, Object.fromEntries(players.map(p => [p.name, roles[p.id]])));
+      wmGameStates.set(roomCode, {
+        roles,
+        eliminated: new Set(),
+        readyPlayers: new Set(),
+        playerCount: players.length,
+        phase: 'role-reveal',
+        accusationsUsed: new Set(),
+      });
+    } else if (room.gameType === 'imposter') {
+      const { roles, imposterId } = assignImposterRoles(players, room.config);
+      impGameStates.set(roomCode, {
+        roles,
+        imposterId,
+        wordSetterId: room.config.wordSetterId,
+        normalWord: null,
+        imposterWord: null,
+        votes: new Map(),
+        votedNames: [],
+        playerCount: players.length,
+        phase: 'waiting-words',
+        votingTimer: null,
+      });
+    }
+
     ns.to(roomCode).emit('lobby:game_starting', { gameType: room.gameType });
   });
 

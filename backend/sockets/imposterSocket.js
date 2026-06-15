@@ -1,7 +1,6 @@
 const { getRoom, getPlayer, getPlayersArray, setRoomPhase, deleteRoom } = require('../utils/roomManager');
-const { assignImposterRoles } = require('../utils/roleAssigner');
+const { impGameStates: gameStates } = require('../utils/gameStateStore');
 
-const gameStates = new Map();
 const hostTimers = new Map();
 
 function imposterSocket(socket, ns) {
@@ -18,25 +17,9 @@ function imposterSocket(socket, ns) {
 
   socket.join(roomCode);
 
-  if (!gameStates.has(roomCode)) {
-    const players = getPlayersArray(roomCode);
-    const { roles, imposterId } = assignImposterRoles(players, room.config);
-
-    gameStates.set(roomCode, {
-      roles,
-      imposterId,
-      wordSetterId: room.config.wordSetterId,
-      normalWord: null,
-      imposterWord: null,
-      votes: new Map(),
-      votedNames: [],
-      playerCount: players.length,
-      phase: 'waiting-words',
-      votingTimer: null,
-    });
-  }
-
   const state = gameStates.get(roomCode);
+  if (!state) return socket.disconnect(true);
+
   socket.emit('imp:roles_dealt', { role: state.roles[playerId] });
 
   socket.on('imp:submit_words', ({ normalWord, imposterWord }) => {
