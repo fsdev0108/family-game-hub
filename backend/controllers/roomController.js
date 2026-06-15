@@ -19,7 +19,8 @@ const {
 
 async function createRoomHandler(req, res, next) {
   try {
-    const { gameType, password, playerName } = req.body;
+    const { gameType: rawGameType, password, playerName } = req.body;
+    const gameType = rawGameType || 'wink-murder';
 
     const gameTypeError = validateGameType(gameType);
     if (gameTypeError) return next(createError(400, 'INVALID_GAME_TYPE', gameTypeError));

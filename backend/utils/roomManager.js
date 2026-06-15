@@ -75,6 +75,26 @@ function setRoomPhase(code, phase) {
   return room;
 }
 
+function setGameType(code, gameType) {
+  const room = getRoom(code);
+  if (!room) return null;
+  room.gameType = gameType;
+  room.config = {};
+  room.lastRoles = null;
+  return room;
+}
+
+function setLastRoles(code, roles) {
+  const room = getRoom(code);
+  if (!room) return;
+  room.lastRoles = { ...roles };
+}
+
+function getLastRoles(code) {
+  const room = getRoom(code);
+  return room?.lastRoles || null;
+}
+
 function getPlayersArray(code) {
   const room = getRoom(code);
   if (!room) return [];
@@ -92,5 +112,8 @@ module.exports = {
   isNameTaken,
   updateRoomConfig,
   setRoomPhase,
+  setGameType,
+  setLastRoles,
+  getLastRoles,
   getPlayersArray,
 };

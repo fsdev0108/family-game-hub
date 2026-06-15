@@ -6,6 +6,9 @@ const {
   getPlayersArray,
   updateRoomConfig,
   setRoomPhase,
+  setGameType,
+  setLastRoles,
+  getLastRoles,
 } = require('../utils/roomManager');
 const { validatePlayerName, validateWinkMurderConfig, validateImposterConfig } = require('../utils/gameValidators');
 const { assignWinkMurderRoles, assignImposterRoles } = require('../utils/roleAssigner');
@@ -82,6 +85,21 @@ function lobbySocket(socket, ns) {
     ns.to(roomCode).emit('lobby:config_updated', { config: updatedRoom.config });
   });
 
+  socket.on('lobby:change_game_type', ({ gameType }) => {
+    if (!isHost) return;
+    const room = getRoom(roomCode);
+    if (!room || room.phase !== 'lobby') return;
+    if (!['wink-murder', 'imposter'].includes(gameType)) return;
+
+    setGameType(roomCode, gameType);
+    if (gameType === 'wink-murder') {
+      updateRoomConfig(roomCode, { killerCount: 1, detectiveCount: 0 });
+    }
+
+    const updatedRoom = getRoom(roomCode);
+    ns.to(roomCode).emit('lobby:game_type_changed', { gameType, config: updatedRoom.config });
+  });
+
   socket.on('lobby:start_game', () => {
     if (!isHost) {
       return socket.emit('lobby:error', { code: 'FORBIDDEN', message: 'Only the host can start the game' });
@@ -105,7 +123,8 @@ function lobbySocket(socket, ns) {
     const players = getPlayersArray(roomCode);
     console.log(`[${roomCode}] Starting game. Players: ${players.map(p => p.name).join(', ')} | Config:`, room.config);
     if (room.gameType === 'wink-murder') {
-      const roles = assignWinkMurderRoles(players, room.config);
+      const roles = assignWinkMurderRoles(players, room.config, getLastRoles(roomCode));
+      setLastRoles(roomCode, roles);
       console.log(`[${roomCode}] Wink Murder roles:`, Object.fromEntries(players.map(p => [p.name, roles[p.id]])));
       wmGameStates.set(roomCode, {
         roles,

@@ -17,6 +17,11 @@ const gameInfo = {
   imposter: { emoji: '🕵️', name: 'Imposter', color: 'from-pink-900/40 to-pink-800/20', border: 'border-pink-500/30' },
 };
 
+const GAME_TYPES = [
+  { id: 'wink-murder', emoji: '🔪', name: 'Wink Murder' },
+  { id: 'imposter', emoji: '🕵️', name: 'Imposter' },
+];
+
 export default function LobbyPage() {
   const navigate = useNavigate();
   const { session, setSession, clearSession } = useSession();
@@ -30,7 +35,7 @@ export default function LobbyPage() {
 
   const roomCode = session?.roomCode;
   const isHost = session?.player?.isHost;
-  const gameType = session?.gameType;
+  const gameType = session?.gameType || 'wink-murder';
   const game = gameInfo[gameType] || gameInfo['wink-murder'];
 
   const fetchPlayers = useCallback(async () => {
@@ -78,6 +83,11 @@ export default function LobbyPage() {
       setConfig(newConfig);
     });
 
+    socket.on('lobby:game_type_changed', ({ gameType: newGameType, config: newConfig }) => {
+      setSession(prev => ({ ...prev, gameType: newGameType }));
+      setConfig(newConfig || {});
+    });
+
     socket.on('lobby:game_starting', ({ gameType }) => {
       toastSuccess('Game is starting!');
       setStarting(true);
@@ -105,6 +115,11 @@ export default function LobbyPage() {
 
   function handleUpdateConfig(newConfig) {
     socketRef.current?.emit('lobby:update_config', newConfig);
+  }
+
+  function handleChangeGameType(newGameType) {
+    if (newGameType === gameType) return;
+    socketRef.current?.emit('lobby:change_game_type', { gameType: newGameType });
   }
 
   function handleStartGame() {
@@ -203,6 +218,42 @@ export default function LobbyPage() {
 
           {/* Config + Start */}
           <div className="space-y-4">
+            {/* Game type selector */}
+            <div className="bg-dark-700 border border-border rounded-2xl p-4 animate-fade-in-up" style={{ animationDelay: '150ms', animationFillMode: 'both' }}>
+              <p className="text-xs text-slate-500 mb-3 font-medium uppercase tracking-wider">Game</p>
+              <div className="flex gap-2">
+                {GAME_TYPES.map(g => {
+                  const active = gameType === g.id;
+                  return isHost ? (
+                    <button
+                      key={g.id}
+                      onClick={() => handleChangeGameType(g.id)}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-sm font-medium transition-all ${
+                        active
+                          ? 'bg-violet-600/30 border-violet-500/60 text-violet-300'
+                          : 'bg-dark-600/40 border-border text-slate-500 hover:text-slate-300 hover:border-slate-500'
+                      }`}
+                    >
+                      <span>{g.emoji}</span>
+                      <span>{g.name}</span>
+                    </button>
+                  ) : (
+                    <div
+                      key={g.id}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-sm font-medium ${
+                        active
+                          ? 'bg-violet-600/30 border-violet-500/60 text-violet-300'
+                          : 'bg-dark-600/40 border-border text-slate-600'
+                      }`}
+                    >
+                      <span>{g.emoji}</span>
+                      <span>{g.name}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="bg-dark-700 border border-border rounded-2xl p-6 animate-fade-in-up" style={{ animationDelay: '200ms', animationFillMode: 'both' }}>
               {gameType === 'wink-murder' && (
                 <WinkMurderConfig

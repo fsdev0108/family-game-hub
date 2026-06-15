@@ -13,7 +13,7 @@ const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || `http://${window.location.
 
 export default function ImposterPage() {
   const navigate = useNavigate();
-  const { session, clearSession } = useSession();
+  const { session, setSession, clearSession } = useSession();
   const socketRef = useRef(null);
 
   const [phase, setPhase] = useState('role-reveal');
@@ -81,6 +81,11 @@ export default function ImposterPage() {
       setGameOver(data);
     });
 
+    socket.on('imp:game_restarted', () => {
+      setSession(prev => ({ ...prev, phase: 'lobby' }));
+      navigate('/lobby', { replace: true });
+    });
+
     socket.on('error', ({ code, message }) => {
       toastError(message);
       if (code === 'HOST_DISCONNECTED') {
@@ -124,6 +129,10 @@ export default function ImposterPage() {
     if (isHost) socketRef.current?.emit('imp:end_game');
     await clearSession();
     navigate('/', { replace: true });
+  }
+
+  function handleRestart() {
+    socketRef.current?.emit('imp:restart_game');
   }
 
   if (!session?.valid) return null;
@@ -205,6 +214,7 @@ export default function ImposterPage() {
               'Game ended by host.'
             }
             stats={stats}
+            onRestart={isHost ? handleRestart : null}
           />
         </div>
       </div>

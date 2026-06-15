@@ -7,22 +7,27 @@ function shuffle(array) {
   return arr;
 }
 
-function assignWinkMurderRoles(players, config) {
-  // Fall back to sensible defaults if config was never explicitly saved
+function assignWinkMurderRoles(players, config, previousRoles = null) {
   const killerCount = Number.isInteger(config?.killerCount) ? config.killerCount : 1;
   const detectiveCount = Number.isInteger(config?.detectiveCount) ? config.detectiveCount : 0;
-  const playerIds = shuffle(players.map(p => p.id));
 
-  const roles = {};
-  playerIds.forEach((id, index) => {
-    if (index < killerCount) {
-      roles[id] = 'killer';
-    } else if (index < killerCount + detectiveCount) {
-      roles[id] = 'detective';
-    } else {
-      roles[id] = 'civilian';
-    }
-  });
+  let roles = {};
+  let attempts = 0;
+
+  do {
+    const playerIds = shuffle(players.map(p => p.id));
+    roles = {};
+    playerIds.forEach((id, index) => {
+      if (index < killerCount) roles[id] = 'killer';
+      else if (index < killerCount + detectiveCount) roles[id] = 'detective';
+      else roles[id] = 'civilian';
+    });
+    attempts++;
+  } while (
+    previousRoles !== null &&
+    attempts < 10 &&
+    Object.keys(roles).every(id => roles[id] === previousRoles[id])
+  );
 
   return roles;
 }

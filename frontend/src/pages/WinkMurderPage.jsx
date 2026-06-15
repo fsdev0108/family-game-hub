@@ -13,7 +13,7 @@ const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || `http://${window.location.
 
 export default function WinkMurderPage() {
   const navigate = useNavigate();
-  const { session, clearSession } = useSession();
+  const { session, setSession, clearSession } = useSession();
   const socketRef = useRef(null);
 
   const [phase, setPhase] = useState('role-reveal');
@@ -28,7 +28,7 @@ export default function WinkMurderPage() {
 
   const roomCode = session?.roomCode;
   const myName = session?.player?.name;
-  const isHost = session?.player?.isHost;
+  const isHost = session?.player?.isHost ?? false;
   const isEliminated = eliminated.has(myName);
 
   useEffect(() => {
@@ -55,6 +55,12 @@ export default function WinkMurderPage() {
       else toastInfo(`${targetName} was winked out!`);
     });
 
+    socket.on('wm:killer_caught', ({ killerName, detectiveName }) => {
+      setEliminated(prev => new Set([...prev, killerName]));
+      setLastEvent({ type: 'killer_caught', killerName, detectiveName });
+      toastSuccess(`${detectiveName} caught the killer ${killerName}!`);
+    });
+
     socket.on('wm:accusation_result', ({ accuserName, accusedName, accusedRole, correct }) => {
       setEliminated(prev => new Set([...prev, correct ? accusedName : accuserName]));
       setLastEvent({ type: 'accusation', accuserName, accusedName, accusedRole, correct });
@@ -65,6 +71,11 @@ export default function WinkMurderPage() {
     socket.on('wm:game_over', ({ winner, roles }) => {
       setPhase('ended');
       setGameOver({ winner, roles });
+    });
+
+    socket.on('wm:game_restarted', () => {
+      setSession(prev => ({ ...prev, phase: 'lobby' }));
+      navigate('/lobby', { replace: true });
     });
 
     socket.on('error', ({ code, message }) => {
@@ -84,10 +95,14 @@ export default function WinkMurderPage() {
 
   async function handleLeave() {
     setLeaving(true);
-    // Emit end game first if host so others get notified, then clear session
     if (isHost) socketRef.current?.emit('wm:end_game');
     await clearSession();
     navigate('/', { replace: true });
+  }
+
+  function handleRestart() {
+    socketRef.current?.emit('wm:restart_game');
+    // All players navigate to lobby when server confirms wm:game_restarted
   }
 
   if (!session?.valid) return null;
@@ -121,6 +136,7 @@ export default function WinkMurderPage() {
               'Game ended by host.'
             }
             stats={rolesArr}
+            onRestart={isHost ? handleRestart : null}
           />
         </div>
       </div>
@@ -153,6 +169,7 @@ export default function WinkMurderPage() {
       {lastEvent && (
         <div className="mb-4 px-4 py-3 bg-dark-600/60 border border-border rounded-xl text-sm text-slate-300 animate-slide-in-right">
           {lastEvent.type === 'wink' && `💀 ${lastEvent.name} was winked out!`}
+          {lastEvent.type === 'killer_caught' && `🕵️ ${lastEvent.detectiveName} caught the killer ${lastEvent.killerName} in the act!`}
           {lastEvent.type === 'accusation' && (
             lastEvent.correct
               ? `🎯 ${lastEvent.accuserName} correctly accused ${lastEvent.accusedName} (${lastEvent.accusedRole})!`

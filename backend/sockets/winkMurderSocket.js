@@ -45,8 +45,15 @@ function winkMurderSocket(socket, ns) {
     if (state.eliminated.has(target.id)) return;
     if (target.id === playerId) return;
 
-    state.eliminated.add(target.id);
-    ns.to(roomCode).emit('wm:player_winked', { targetName });
+    if (state.roles[target.id] === 'detective') {
+      // Detective catches the killer in the act — killer is eliminated
+      const killerName = players.find(p => p.id === playerId)?.name;
+      state.eliminated.add(playerId);
+      ns.to(roomCode).emit('wm:killer_caught', { killerName, detectiveName: targetName });
+    } else {
+      state.eliminated.add(target.id);
+      ns.to(roomCode).emit('wm:player_winked', { targetName });
+    }
     checkWinkMurderEnd(roomCode, ns, state);
   });
 
@@ -87,6 +94,15 @@ function winkMurderSocket(socket, ns) {
   socket.on('wm:end_game', () => {
     if (!isHost) return;
     endGame(roomCode, ns, state, 'host_ended');
+  });
+
+  // Host restarts — clears game state and sends everyone back to lobby
+  socket.on('wm:restart_game', () => {
+    if (!isHost) return;
+    if (state.phase !== 'ended') state.phase = 'ended';
+    gameStates.delete(roomCode);
+    setRoomPhase(roomCode, 'lobby');
+    ns.to(roomCode).emit('wm:game_restarted');
   });
 
   socket.on('disconnect', () => {

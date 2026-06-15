@@ -33,15 +33,11 @@ const GAME_TYPES = [
 function CreateRoomModal({ isOpen, onClose }) {
   const navigate = useNavigate();
   const { setSession } = useSession();
-  const [step, setStep] = useState(1);
-  const [gameType, setGameType] = useState('');
   const [form, setForm] = useState({ playerName: '', password: '' });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
   function reset() {
-    setStep(1);
-    setGameType('');
     setForm({ playerName: '', password: '' });
     setErrors({});
   }
@@ -60,7 +56,6 @@ function CreateRoomModal({ isOpen, onClose }) {
     setLoading(true);
     try {
       const data = await api.createRoom({
-        gameType,
         playerName: form.playerName.trim(),
         password: form.password.trim(),
       });
@@ -82,64 +77,31 @@ function CreateRoomModal({ isOpen, onClose }) {
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Create a Room">
-      {step === 1 ? (
-        <div className="space-y-4">
-          <p className="text-sm text-slate-400">Choose your game:</p>
-          <div className="grid gap-3">
-            {GAME_TYPES.map(g => (
-              <button
-                key={g.id}
-                onClick={() => { setGameType(g.id); setStep(2); }}
-                className={`w-full text-left p-4 bg-gradient-to-br ${g.color} border ${g.border} rounded-xl transition-all duration-200 card-hover group`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl">{g.emoji}</span>
-                  <div>
-                    <div className={`font-bold ${g.accent}`}>{g.name}</div>
-                    <div className="text-xs text-slate-500 mt-0.5">{g.players}</div>
-                  </div>
-                </div>
-                <p className="text-sm text-slate-400 mt-2 leading-relaxed">{g.desc}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <button
-            onClick={() => setStep(1)}
-            className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-300 transition-colors"
-          >
-            ← Back
-          </button>
-          <div className="flex items-center gap-2 px-3 py-2 bg-dark-600/50 border border-border rounded-lg">
-            <span>{GAME_TYPES.find(g => g.id === gameType)?.emoji}</span>
-            <span className="text-sm text-slate-300 font-medium">{GAME_TYPES.find(g => g.id === gameType)?.name}</span>
-          </div>
-          <Input
-            label="Your Name"
-            placeholder="e.g. Dad, Sherlock..."
-            value={form.playerName}
-            onChange={e => { setForm(f => ({ ...f, playerName: e.target.value })); setErrors(er => ({ ...er, playerName: '' })); }}
-            error={errors.playerName}
-            maxLength={20}
-            autoFocus
-          />
-          <Input
-            label="Room Password"
-            type="password"
-            placeholder="Share with family..."
-            value={form.password}
-            onChange={e => { setForm(f => ({ ...f, password: e.target.value })); setErrors(er => ({ ...er, password: '' })); }}
-            error={errors.password}
-            onKeyDown={e => e.key === 'Enter' && handleCreate()}
-            maxLength={20}
-          />
-          <Button onClick={handleCreate} loading={loading} fullWidth size="lg">
-            Create Room 🚀
-          </Button>
-        </div>
-      )}
+      <div className="space-y-4">
+        <p className="text-sm text-slate-400">Choose your game inside the lobby after creating the room.</p>
+        <Input
+          label="Your Name"
+          placeholder="e.g. Dad, Sherlock..."
+          value={form.playerName}
+          onChange={e => { setForm(f => ({ ...f, playerName: e.target.value })); setErrors(er => ({ ...er, playerName: '' })); }}
+          error={errors.playerName}
+          maxLength={20}
+          autoFocus
+        />
+        <Input
+          label="Room Password"
+          type="password"
+          placeholder="Share with family..."
+          value={form.password}
+          onChange={e => { setForm(f => ({ ...f, password: e.target.value })); setErrors(er => ({ ...er, password: '' })); }}
+          error={errors.password}
+          onKeyDown={e => e.key === 'Enter' && handleCreate()}
+          maxLength={20}
+        />
+        <Button onClick={handleCreate} loading={loading} fullWidth size="lg">
+          Create Room 🚀
+        </Button>
+      </div>
     </Modal>
   );
 }

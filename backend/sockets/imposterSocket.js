@@ -88,6 +88,15 @@ function imposterSocket(socket, ns) {
     }
   });
 
+  // Host restarts — clears game state and sends everyone back to lobby
+  socket.on('imp:restart_game', () => {
+    if (!isHost) return;
+    if (state.votingTimer) clearTimeout(state.votingTimer);
+    gameStates.delete(roomCode);
+    setRoomPhase(roomCode, 'lobby');
+    ns.to(roomCode).emit('imp:game_restarted');
+  });
+
   // Host can end the game early
   socket.on('imp:end_game', () => {
     if (!isHost) return;

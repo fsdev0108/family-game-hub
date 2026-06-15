@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useSession } from '../../contexts/SessionContext';
 import { api } from '../../api';
 
-export default function GameOverScreen({ winner, subtitle, stats = [] }) {
+export default function GameOverScreen({ winner, subtitle, stats = [], onRestart }) {
   const navigate = useNavigate();
   const { clearSession } = useSession();
 
@@ -19,7 +19,7 @@ export default function GameOverScreen({ winner, subtitle, stats = [] }) {
       <div className="text-center">
         <div className="text-7xl mb-4 animate-float">{isWin ? '🏆' : '💀'}</div>
         <h1 className={`text-4xl font-black mb-2 ${isWin ? 'text-amber-400 text-glow-purple' : 'text-red-400'}`}>
-          {isWin ? 'Players Win!' : winner === 'killers' ? 'Killers Win!' : 'Imposter Wins!'}
+          {isWin ? 'Players Win!' : winner === 'killers' ? 'Killers Win!' : winner === 'imposter' ? 'Imposter Wins!' : 'Game Over'}
         </h1>
         {subtitle && <p className="text-slate-400 text-lg">{subtitle}</p>}
       </div>
@@ -35,9 +35,16 @@ export default function GameOverScreen({ winner, subtitle, stats = [] }) {
         </div>
       )}
 
-      <Button onClick={handleLeave} size="lg" variant="secondary">
-        Back to Home
-      </Button>
+      <div className="flex flex-col sm:flex-row gap-3 w-full max-w-sm">
+        {onRestart && (
+          <Button onClick={onRestart} size="lg" fullWidth>
+            🔄 Restart Game
+          </Button>
+        )}
+        <Button onClick={handleLeave} size="lg" variant="secondary" fullWidth>
+          Back to Home
+        </Button>
+      </div>
     </div>
   );
 }
