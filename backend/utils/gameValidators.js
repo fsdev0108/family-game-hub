@@ -51,19 +51,9 @@ function validateWinkMurderConfig(config, playerCount) {
 }
 
 function validateImposterConfig(config, playerIds) {
-  const { wordSetterId, imposterSelectionMode, imposterId } = config;
-
+  const { wordSetterId } = config;
   if (!wordSetterId) return 'A word setter must be selected';
   if (!playerIds.includes(wordSetterId)) return 'Word setter must be a player in the room';
-
-  if (!['random', 'manual'].includes(imposterSelectionMode)) {
-    return 'Imposter selection mode must be random or manual';
-  }
-  if (imposterSelectionMode === 'manual') {
-    if (!imposterId) return 'An imposter must be selected in manual mode';
-    if (!playerIds.includes(imposterId)) return 'Imposter must be a player in the room';
-    if (imposterId === wordSetterId) return 'The word setter cannot also be the imposter';
-  }
   return null;
 }
 

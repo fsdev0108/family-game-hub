@@ -32,23 +32,11 @@ function assignWinkMurderRoles(players, config, previousRoles = null) {
   return roles;
 }
 
-function assignImposterRoles(players, config) {
-  const { imposterSelectionMode, imposterId: manualImposterId, wordSetterId } = config;
-
+function assignImposterRoles(players) {
   const roles = {};
   players.forEach(p => { roles[p.id] = 'normal'; });
-
-  let imposterId;
-  if (imposterSelectionMode === 'manual') {
-    imposterId = manualImposterId;
-  } else {
-    const eligiblePlayers = players.filter(p => p.id !== wordSetterId);
-    const chosen = eligiblePlayers[Math.floor(Math.random() * eligiblePlayers.length)];
-    imposterId = chosen.id;
-  }
-
-  roles[imposterId] = 'imposter';
-  return { roles, imposterId };
+  // Imposter is assigned later by the word setter during word submission
+  return { roles };
 }
 
 module.exports = { assignWinkMurderRoles, assignImposterRoles };

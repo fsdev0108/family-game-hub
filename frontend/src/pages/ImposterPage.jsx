@@ -31,23 +31,20 @@ export default function ImposterPage() {
   const [normalWord, setNormalWord] = useState('');
   const [imposterWord, setImposterWord] = useState('');
   const [wordError, setWordError] = useState('');
+  const [imposterMode, setImposterMode] = useState('random');
+  const [selectedImposterName, setSelectedImposterName] = useState('');
   const [leaving, setLeaving] = useState(false);
 
   const roomCode = session?.roomCode;
   const myName = session?.player?.name;
-  const myId = session?.player?.id;
   const isHost = session?.player?.isHost;
 
   useEffect(() => {
     if (!roomCode) { navigate('/', { replace: true }); return; }
 
-    Promise.all([
-      api.getPlayers(roomCode),
-      api.getRoom(roomCode),
-    ]).then(([playersData, roomData]) => {
-      setPlayerNames(playersData.players.map(p => p.name));
-      if (roomData.config?.wordSetterId === myId) setAmWordSetter(true);
-    }).catch(() => {});
+    api.getPlayers(roomCode)
+      .then(data => setPlayerNames(data.players.map(p => p.name)))
+      .catch(() => {});
 
     const socket = io(`${SOCKET_URL}/imposter`, {
       withCredentials: true,
@@ -56,15 +53,21 @@ export default function ImposterPage() {
     });
     socketRef.current = socket;
 
-    socket.on('imp:roles_dealt', ({ role }) => setMyRole(role));
+    socket.on('imp:roles_dealt', ({ role, isWordSetter }) => {
+      setMyRole(role);
+      setAmWordSetter(isWordSetter);
+      setPhase(isWordSetter ? 'word-setup' : 'waiting-words');
+    });
 
-    socket.on('imp:words_set', ({ word }) => {
+    socket.on('imp:words_set', ({ word, role }) => {
       setMyWord(word);
-      setPhase('playing');
+      if (role) setMyRole(role);
+      setPhase('word-reveal');
     });
 
     socket.on('imp:words_distributed', () => {
-      setPhase(prev => prev === 'waiting-words' ? 'playing' : prev);
+      // Fallback: transition anyone still waiting if imp:words_set was missed
+      setPhase(prev => prev === 'waiting-words' ? 'word-reveal' : prev);
     });
 
     socket.on('imp:voting_open', ({ players, durationSeconds }) => {
@@ -94,13 +97,7 @@ export default function ImposterPage() {
     });
 
     return () => socket.disconnect();
-  }, [roomCode, myId]);
-
-  useEffect(() => {
-    if (myRole === null) return;
-    if (amWordSetter) setPhase('word-setup');
-    else setPhase('waiting-words');
-  }, [myRole, amWordSetter]);
+  }, [roomCode]);
 
   useEffect(() => {
     if (phase !== 'voting' || timeLeft === null || timeLeft <= 0) return;
@@ -111,10 +108,15 @@ export default function ImposterPage() {
   function handleSubmitWords() {
     if (!normalWord.trim() || !imposterWord.trim()) return setWordError('Both words are required');
     if (normalWord.trim().toLowerCase() === imposterWord.trim().toLowerCase()) return setWordError('Words must be different');
+    if (imposterMode === 'manual' && !selectedImposterName) return setWordError('Pick an imposter or switch to random');
     setWordError('');
     setHostWord({ normal: normalWord.trim(), imposter: imposterWord.trim() });
-    socketRef.current?.emit('imp:submit_words', { normalWord: normalWord.trim(), imposterWord: imposterWord.trim() });
-    setPhase('playing');
+    socketRef.current?.emit('imp:submit_words', {
+      normalWord: normalWord.trim(),
+      imposterWord: imposterWord.trim(),
+      imposterName: imposterMode === 'manual' ? selectedImposterName : null,
+    });
+    // Phase transitions to 'word-reveal' when server sends imp:words_set back
   }
 
   function handleVote(name) {
@@ -151,6 +153,7 @@ export default function ImposterPage() {
   }
 
   if (phase === 'word-setup') {
+    const otherPlayers = playerNames.filter(n => n !== myName);
     return (
       <FullCenter>
         <div className="w-full max-w-md space-y-6">
@@ -158,7 +161,7 @@ export default function ImposterPage() {
             <div className="text-5xl mb-3 animate-float">📝</div>
             <h1 className="text-2xl font-black text-white">You're the Word Setter!</h1>
             <p className="text-slate-400 mt-2 text-sm">
-              Give everyone one word, and give the imposter a close but different one.
+              Set the words and secretly choose the imposter.
             </p>
           </div>
           <div className="bg-dark-700 border border-border rounded-2xl p-6 space-y-4">
@@ -174,9 +177,42 @@ export default function ImposterPage() {
               placeholder="e.g. River"
               value={imposterWord}
               onChange={e => { setImposterWord(e.target.value); setWordError(''); }}
-              error={wordError}
-              onKeyDown={e => e.key === 'Enter' && handleSubmitWords()}
             />
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-slate-400">Imposter Selection 🕵️</label>
+              <div className="grid grid-cols-2 gap-2">
+                {['random', 'manual'].map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => { setImposterMode(mode); setSelectedImposterName(''); setWordError(''); }}
+                    className={`py-2.5 rounded-xl border text-sm font-medium transition-all capitalize ${
+                      imposterMode === mode
+                        ? 'bg-violet-600/30 border-violet-500/60 text-violet-300'
+                        : 'bg-dark-600/40 border-border text-slate-400 hover:border-violet-500/30'
+                    }`}
+                  >
+                    {mode === 'random' ? '🎲 Random' : '👆 Manual'}
+                  </button>
+                ))}
+              </div>
+              {imposterMode === 'manual' && (
+                <select
+                  value={selectedImposterName}
+                  onChange={e => { setSelectedImposterName(e.target.value); setWordError(''); }}
+                  className="w-full bg-dark-600/60 border border-border rounded-xl px-4 py-2.5 text-slate-100 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 transition-all"
+                >
+                  <option value="">Choose who is the imposter...</option>
+                  {otherPlayers.map(name => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {wordError && (
+              <p className="text-xs text-red-400 bg-red-900/20 border border-red-500/20 rounded-lg px-3 py-2">{wordError}</p>
+            )}
             <Button onClick={handleSubmitWords} fullWidth size="lg">Distribute Words 📤</Button>
           </div>
           <p className="text-xs text-slate-500 text-center">
@@ -198,6 +234,52 @@ export default function ImposterPage() {
     );
   }
 
+  if (phase === 'word-reveal') {
+    return (
+      <FullCenter>
+        <div className="w-full max-w-md space-y-5 animate-fade-in-up">
+          <div className="text-center">
+            <div className="text-5xl mb-3 animate-float">
+              {myRole === 'imposter' ? '🕵️' : amWordSetter ? '📝' : '💬'}
+            </div>
+            <h1 className="text-2xl font-black text-white">
+              {myRole === 'imposter' ? "You're the Imposter!" : amWordSetter ? "You're the Word Setter!" : "You're a Crewmate!"}
+            </h1>
+            <p className="text-sm text-slate-400 mt-1">
+              {myRole === 'imposter'
+                ? 'Blend in — your word is slightly different!'
+                : 'Find the imposter — someone has a different word!'}
+            </p>
+          </div>
+
+          <div className={`rounded-2xl p-8 text-center border ${
+            myRole === 'imposter'
+              ? 'bg-gradient-to-br from-pink-900/40 to-pink-800/20 border-pink-500/30'
+              : 'bg-gradient-to-br from-emerald-900/40 to-emerald-800/20 border-emerald-500/30'
+          }`}>
+            <p className="text-sm text-slate-400 mb-2">Your Word</p>
+            <p className="text-4xl font-black text-white">{myWord ?? '—'}</p>
+          </div>
+
+          {amWordSetter && hostWord.normal && (
+            <div className="bg-amber-900/20 border border-amber-500/30 rounded-xl p-4">
+              <p className="text-xs text-slate-400 mb-1 text-center">Words you set</p>
+              <p className="text-center text-slate-200 text-sm">
+                Normal: <span className="font-bold text-white">{hostWord.normal}</span>
+                {' · '}
+                Imposter: <span className="font-bold text-white">{hostWord.imposter}</span>
+              </p>
+            </div>
+          )}
+
+          <Button onClick={() => setPhase('playing')} fullWidth size="lg">
+            Got it! Let's Play 🎮
+          </Button>
+        </div>
+      </FullCenter>
+    );
+  }
+
   if (phase === 'ended' && gameOver) {
     const stats = [
       { label: 'Imposter', value: gameOver.imposterName ?? '—' },
@@ -205,17 +287,25 @@ export default function ImposterPage() {
       { label: 'Imposter Word', value: gameOver.imposterWord ?? '—' },
       ...(gameOver.eliminatedName ? [{ label: 'Eliminated', value: gameOver.eliminatedName }] : []),
     ];
+    const voteResults = gameOver.voteDetails
+      ? Object.entries(gameOver.voteDetails).map(([voter, votedFor]) => ({ voter, votedFor }))
+      : [];
     return (
       <div className="min-h-screen bg-dark-900 bg-grid flex items-center justify-center px-4 py-8">
         <div className="w-full max-w-md">
           <GameOverScreen
             winner={gameOver.winner}
             subtitle={
-              gameOver.winner === 'players' ? `${gameOver.imposterName} was caught!` :
-              gameOver.winner === 'imposter' ? `${gameOver.imposterName} fooled everyone!` :
-              'Game ended by host.'
+              gameOver.winner === 'players'
+                ? `${gameOver.imposterName} was caught!`
+                : gameOver.winner === 'imposter'
+                  ? (gameOver.isTie
+                      ? 'No consensus — the imposter escapes!'
+                      : `${gameOver.eliminatedName ?? 'An innocent'} was eliminated — the imposter fooled everyone!`)
+                  : 'Game ended by host.'
             }
             stats={stats}
+            voteResults={voteResults}
             onRestart={isHost ? handleRestart : null}
           />
         </div>

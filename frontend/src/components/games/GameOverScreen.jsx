@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useSession } from '../../contexts/SessionContext';
 import { api } from '../../api';
 
-export default function GameOverScreen({ winner, subtitle, stats = [], onRestart }) {
+export default function GameOverScreen({ winner, subtitle, stats = [], onRestart, voteResults }) {
   const navigate = useNavigate();
   const { clearSession } = useSession();
 
@@ -30,6 +30,18 @@ export default function GameOverScreen({ winner, subtitle, stats = [], onRestart
             <div key={i} className="flex items-center justify-between px-4 py-3 bg-dark-600/50 border border-border rounded-xl">
               <span className="text-slate-400 text-sm">{stat.label}</span>
               <span className="font-semibold text-slate-200">{stat.value}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {voteResults && voteResults.length > 0 && (
+        <div className="w-full max-w-sm space-y-2">
+          <p className="text-xs text-slate-500 uppercase tracking-wider text-center">🗳️ Vote Breakdown</p>
+          {voteResults.map((v, i) => (
+            <div key={i} className="flex items-center justify-between px-4 py-3 bg-dark-600/50 border border-border rounded-xl">
+              <span className="text-slate-400 text-sm">{v.voter}</span>
+              <span className="font-semibold text-slate-200">→ {v.votedFor}</span>
             </div>
           ))}
         </div>

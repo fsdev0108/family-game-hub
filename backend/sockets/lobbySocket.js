@@ -115,12 +115,20 @@ function lobbySocket(socket, ns) {
       });
     }
 
-    setRoomPhase(roomCode, 'starting');
-
     // Assign roles now, while all players are still in the lobby.
     // Game sockets will read from this pre-initialized state instead of
     // racing to assign roles when the first player connects.
     const players = getPlayersArray(roomCode);
+
+    // Validate imposter config before starting (wordSetterId must be set)
+    if (room.gameType === 'imposter') {
+      const configError = validateImposterConfig(room.config, players.map(p => p.id));
+      if (configError) {
+        return socket.emit('lobby:error', { code: 'INVALID_CONFIG', message: configError });
+      }
+    }
+
+    setRoomPhase(roomCode, 'starting');
     console.log(`[${roomCode}] Starting game. Players: ${players.map(p => p.name).join(', ')} | Config:`, room.config);
     if (room.gameType === 'wink-murder') {
       const roles = assignWinkMurderRoles(players, room.config, getLastRoles(roomCode));
@@ -135,10 +143,10 @@ function lobbySocket(socket, ns) {
         accusationsUsed: new Set(),
       });
     } else if (room.gameType === 'imposter') {
-      const { roles, imposterId } = assignImposterRoles(players, room.config);
+      const { roles } = assignImposterRoles(players);
       impGameStates.set(roomCode, {
         roles,
-        imposterId,
+        imposterId: null, // assigned by word setter during word submission
         wordSetterId: room.config.wordSetterId,
         normalWord: null,
         imposterWord: null,

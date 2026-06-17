@@ -20,9 +20,9 @@ function imposterSocket(socket, ns) {
   const state = gameStates.get(roomCode);
   if (!state) return socket.disconnect(true);
 
-  socket.emit('imp:roles_dealt', { role: state.roles[playerId] });
+  socket.emit('imp:roles_dealt', { role: state.roles[playerId], isWordSetter: state.wordSetterId === playerId });
 
-  socket.on('imp:submit_words', ({ normalWord, imposterWord }) => {
+  socket.on('imp:submit_words', ({ normalWord, imposterWord, imposterName }) => {
     if (playerId !== state.wordSetterId) {
       return socket.emit('error', { code: 'NOT_WORD_SETTER', message: 'Only the word setter can submit words' });
     }
@@ -35,15 +35,32 @@ function imposterSocket(socket, ns) {
       return socket.emit('error', { code: 'SAME_WORDS', message: 'Words must be different' });
     }
 
+    const players = getPlayersArray(roomCode);
+
+    // Assign imposter: manual pick by name or random from non-word-setters
+    let imposterId;
+    if (imposterName) {
+      const picked = players.find(p => p.name === imposterName && p.id !== state.wordSetterId);
+      if (!picked) {
+        return socket.emit('error', { code: 'PLAYER_NOT_FOUND', message: 'Selected imposter not found' });
+      }
+      imposterId = picked.id;
+    } else {
+      const eligible = players.filter(p => p.id !== state.wordSetterId);
+      imposterId = eligible[Math.floor(Math.random() * eligible.length)].id;
+    }
+
+    state.imposterId = imposterId;
+    state.roles[imposterId] = 'imposter';
     state.normalWord = normalWord.trim();
     state.imposterWord = imposterWord.trim();
     state.phase = 'playing';
 
-    const players = getPlayersArray(roomCode);
     players.forEach(player => {
       const word = state.roles[player.id] === 'imposter' ? state.imposterWord : state.normalWord;
+      const role = state.roles[player.id];
       const playerSocket = findSocketByPlayerId(ns, player.id);
-      if (playerSocket) playerSocket.emit('imp:words_set', { word });
+      if (playerSocket) playerSocket.emit('imp:words_set', { word, role });
     });
 
     ns.to(roomCode).emit('imp:words_distributed');
@@ -144,10 +161,14 @@ function resolveVoting(roomCode, ns, state) {
   state.votes.forEach(targetId => { tally[targetId] = (tally[targetId] || 0) + 1; });
 
   let maxVotes = 0;
-  let eliminatedId = null;
-  for (const [id, count] of Object.entries(tally)) {
-    if (count > maxVotes) { maxVotes = count; eliminatedId = id; }
+  for (const count of Object.values(tally)) {
+    if (count > maxVotes) maxVotes = count;
   }
+
+  // Tie (or no votes) → no clear consensus → imposter escapes
+  const topVotedIds = Object.keys(tally).filter(id => tally[id] === maxVotes);
+  const isTie = topVotedIds.length > 1 || maxVotes === 0;
+  const eliminatedId = isTie ? null : topVotedIds[0];
 
   const voteTallyByName = {};
   Object.entries(tally).forEach(([id, count]) => {
@@ -155,17 +176,26 @@ function resolveVoting(roomCode, ns, state) {
     if (player) voteTallyByName[player.name] = count;
   });
 
-  const eliminated = players.find(p => p.id === eliminatedId);
+  const voteDetailsByName = {};
+  state.votes.forEach((targetId, voterId) => {
+    const voter = players.find(p => p.id === voterId);
+    const target = players.find(p => p.id === targetId);
+    if (voter && target) voteDetailsByName[voter.name] = target.name;
+  });
+
+  const eliminated = eliminatedId ? players.find(p => p.id === eliminatedId) : null;
   const imposter = players.find(p => p.id === state.imposterId);
-  const imposterCaught = eliminatedId === state.imposterId;
+  const imposterCaught = !isTie && eliminatedId === state.imposterId;
 
   ns.to(roomCode).emit('imp:game_over', {
     winner: imposterCaught ? 'players' : 'imposter',
     imposterName: imposter?.name,
-    eliminatedName: eliminated?.name,
+    eliminatedName: eliminated?.name ?? null,
+    isTie,
     normalWord: state.normalWord,
     imposterWord: state.imposterWord,
     voteTally: voteTallyByName,
+    voteDetails: voteDetailsByName,
   });
 
   setRoomPhase(roomCode, 'ended');
